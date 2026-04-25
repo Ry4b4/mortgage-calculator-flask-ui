@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ипотечный калькулятор</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+    <div class="background">
+        <div class="gradient-layer"></div>
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
+        <div class="shape shape-4"></div>
+    </div>
+
+    <main class="app-container">
+        <section class="glass-panel">
+            <h1>Ипотечный калькулятор</h1>
+            <p class="subtitle">Рассчитайте сумму переплаты по кредиту</p>
+
+            <form method="post" class="calc-form">
+                <label for="principal">Сумма кредита (₽)</label>
+                <input
+                    id="principal"
+                    name="principal"
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    placeholder="Например: 3500000"
+                    required
+                />
+
+                <label for="years">Срок (лет)</label>
+                <input
+                    id="years"
+                    name="years"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="Например: 20"
+                    required
+                />
+
+                <label for="rate">Процентная ставка (% годовых)</label>
+                <input
+                    id="rate"
+                    name="rate"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Например: 12.5"
+                    required
+                />
+
+                <button type="submit">Рассчитать</button>
+            </form>
+
+            {% if error %}
+                <div class="result error">{{ error }}</div>
+            {% endif %}
+
+            {% if result %}
+                <div class="result success">
+                    <h2>Результат</h2>
+                    <p>Сумма кредита: <strong>{{ "{:,.2f}".format(result.principal).replace(",", " ") }} ₽</strong></p>
+                    <p>Срок: <strong>{{ result.years }} лет</strong></p>
+                    <p>Ставка: <strong>{{ result.rate }}%</strong></p>
+                    <p class="overpayment">
+                        Переплата: <strong>{{ "{:,.2f}".format(result.overpayment).replace(",", " ") }} ₽</strong>
+                    </p>
+                </div>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>
