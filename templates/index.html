@@ -25,10 +25,11 @@
                 <input
                     id="principal"
                     name="principal"
-                    type="number"
-                    min="1"
-                    step="0.01"
+                    type="text"
+                    inputmode="decimal"
+                    data-format="thousands"
                     placeholder="Например: 3500000"
+                    value="{{ form_data.principal }}"
                     required
                 />
 
@@ -40,6 +41,7 @@
                     min="1"
                     step="1"
                     placeholder="Например: 20"
+                    value="{{ form_data.years }}"
                     required
                 />
 
@@ -51,6 +53,7 @@
                     min="0"
                     step="0.01"
                     placeholder="Например: 12.5"
+                    value="{{ form_data.rate }}"
                     required
                 />
 
@@ -65,14 +68,38 @@
                 <div class="result success">
                     <h2>Результат</h2>
                     <p>Сумма кредита: <strong>{{ "{:,.2f}".format(result.principal).replace(",", " ") }} ₽</strong></p>
+                    <p>Итоговая сумма выплат: <strong>{{ "{:,.2f}".format(result.total_payment).replace(",", " ") }} ₽</strong></p>
                     <p>Срок: <strong>{{ result.years }} лет</strong></p>
                     <p>Ставка: <strong>{{ result.rate }}%</strong></p>
                     <p class="overpayment">
-                        Переплата: <strong>{{ "{:,.2f}".format(result.overpayment).replace(",", " ") }} ₽</strong>
+                        Переплата по процентам: <strong>{{ "{:,.2f}".format(result.overpayment).replace(",", " ") }} ₽</strong>
                     </p>
+                    <p>Ежемесячный платеж: <strong>{{ "{:,.2f}".format(result.monthly_payment).replace(",", " ") }} ₽</strong></p>
+                    <p>Рекомендуемый ежемесячный доход: <strong>{{ "{:,.2f}".format(result.required_income).replace(",", " ") }} ₽</strong></p>
                 </div>
             {% endif %}
         </section>
     </main>
+    <script>
+        function formatThousands(value) {
+            const cleaned = value.replace(/\s+/g, "").replace(",", ".");
+            const parts = cleaned.split(".");
+            const integerPart = parts[0].replace(/\D/g, "");
+            const decimalPart = parts.length > 1 ? parts[1].replace(/\D/g, "") : "";
+            const groupedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+            return decimalPart ? `${groupedInteger}.${decimalPart}` : groupedInteger;
+        }
+
+        document.querySelectorAll('input[data-format="thousands"]').forEach((input) => {
+            input.value = formatThousands(input.value);
+            input.addEventListener("input", () => {
+                const cursorAtEnd = input.selectionStart === input.value.length;
+                input.value = formatThousands(input.value);
+                if (cursorAtEnd) {
+                    input.setSelectionRange(input.value.length, input.value.length);
+                }
+            });
+        });
+    </script>
 </body>
 </html>
