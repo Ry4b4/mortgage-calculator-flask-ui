@@ -5,22 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ипотечный калькулятор</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="background">
-        <div class="gradient-layer"></div>
-        <div class="shape shape-1"></div>
-        <div class="shape shape-2"></div>
-        <div class="shape shape-3"></div>
-        <div class="shape shape-4"></div>
-    </div>
-
     <main class="app-container">
-        <section class="glass-panel">
+        <section class="panel">
             <h1>Ипотечный калькулятор</h1>
-            <p class="subtitle">Рассчитайте сумму переплаты по кредиту</p>
+            <p class="subtitle">Минималистичный расчет ипотеки, рассрочки и досрочного погашения</p>
 
-            <form method="post" class="calc-form">
+            <form id="calcForm" method="post" class="calc-form">
+                <div class="mode-switch">
+                    <button type="button" id="mortgageModeBtn" class="mode-btn">Ипотека</button>
+                    <button type="button" id="installmentModeBtn" class="mode-btn">Рассрочка</button>
+                </div>
+                <input type="hidden" name="mode" id="modeInput" value="{{ form_data.mode }}" />
+                <input type="hidden" name="early_payments" id="earlyPaymentsInput" value="{{ form_data.early_payments }}" />
+
                 <label for="property_price">Стоимость недвижимости (₽)</label>
                 <input
                     id="property_price"
@@ -45,7 +45,7 @@
                     required
                 />
 
-                <label for="years">Срок (лет)</label>
+                <label for="years">Срок (в годах)</label>
                 <input
                     id="years"
                     name="years"
@@ -57,19 +57,36 @@
                     required
                 />
 
-                <label for="rate">Процентная ставка (% годовых)</label>
-                <input
-                    id="rate"
-                    name="rate"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Например: 12.5"
-                    value="{{ form_data.rate }}"
-                    required
-                />
+                <div id="rateField">
+                    <label for="rate">Процентная ставка (% годовых)</label>
+                    <input
+                        id="rate"
+                        name="rate"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Например: 12.5"
+                        value="{{ form_data.rate }}"
+                        required
+                    />
+                </div>
 
-                <button type="submit">Рассчитать</button>
+                <label for="early_strategy">Досрочные платежи: стратегия</label>
+                <select id="early_strategy" name="early_strategy">
+                    <option value="reduce_payment" {% if form_data.early_strategy == "reduce_payment" %}selected{% endif %}>Уменьшать платеж</option>
+                    <option value="reduce_term" {% if form_data.early_strategy == "reduce_term" %}selected{% endif %}>Уменьшать срок</option>
+                </select>
+
+                <div class="early-payments-box">
+                    <div class="early-title">Досрочные платежи</div>
+                    <div id="earlyPaymentsRows"></div>
+                    <button type="button" id="addEarlyPaymentBtn" class="secondary-btn">+ Добавить досрочный платеж</button>
+                </div>
+
+                <div class="actions">
+                    <button type="submit">Рассчитать</button>
+                    <button type="submit" formaction="/export" formmethod="post" class="secondary-btn">Скачать Excel</button>
+                </div>
             </form>
 
             {% if error %}
@@ -77,13 +94,14 @@
             {% endif %}
 
             {% if result %}
-                <div class="result success">
+                <div class="result">
                     <h2>Результат</h2>
                     <p>Стоимость недвижимости: <strong>{{ "{:,.2f}".format(result.property_price).replace(",", " ") }} ₽</strong></p>
                     <p>Первоначальный взнос: <strong>{{ "{:,.2f}".format(result.down_payment).replace(",", " ") }} ₽ ({{ result.down_payment_percent }}%)</strong></p>
                     <p>Итоговая сумма кредита: <strong>{{ "{:,.2f}".format(result.loan_amount).replace(",", " ") }} ₽</strong></p>
                     <p>Итоговая сумма выплат: <strong>{{ "{:,.2f}".format(result.total_payment).replace(",", " ") }} ₽</strong></p>
                     <p>Срок: <strong>{{ result.years }} лет</strong></p>
+                    <p>Фактический срок: <strong>{{ result.actual_months }} мес.</strong></p>
                     <p>Ставка: <strong>{{ result.rate }}%</strong></p>
                     <p class="overpayment">
                         Переплата по процентам: <strong>{{ "{:,.2f}".format(result.overpayment).replace(",", " ") }} ₽</strong>
@@ -92,12 +110,12 @@
                     <p>Рекомендуемый ежемесячный доход: <strong>{{ "{:,.2f}".format(result.required_income).replace(",", " ") }} ₽</strong></p>
                 </div>
 
-                <div class="result success">
+                <div class="result">
                     <h2>Визуализация остатка долга</h2>
                     <canvas id="balanceChart" height="220"></canvas>
                 </div>
 
-                <div class="result success">
+                <div class="result">
                     <h2>Подробный график платежей</h2>
                     <div class="table-wrap">
                         <table class="schedule-table">
@@ -105,8 +123,10 @@
                                 <tr>
                                     <th>Месяц</th>
                                     <th>Платеж</th>
+                                    <th>Плановый платеж</th>
                                     <th>Проценты</th>
                                     <th>Тело кредита</th>
+                                    <th>Досрочный платеж</th>
                                     <th>Остаток долга</th>
                                 </tr>
                             </thead>
@@ -115,8 +135,10 @@
                                     <tr>
                                         <td>{{ row.month }}</td>
                                         <td>{{ "{:,.2f}".format(row.payment).replace(",", " ") }} ₽</td>
+                                        <td>{{ "{:,.2f}".format(row.regular_payment).replace(",", " ") }} ₽</td>
                                         <td>{{ "{:,.2f}".format(row.interest).replace(",", " ") }} ₽</td>
                                         <td>{{ "{:,.2f}".format(row.principal).replace(",", " ") }} ₽</td>
+                                        <td>{{ "{:,.2f}".format(row.early_payment).replace(",", " ") }} ₽</td>
                                         <td>{{ "{:,.2f}".format(row.balance).replace(",", " ") }} ₽</td>
                                     </tr>
                                 {% endfor %}
@@ -148,32 +170,124 @@
             });
         });
 
+        function parseEarlyPayments() {
+            const rows = Array.from(document.querySelectorAll(".early-row"));
+            return rows.map((row) => {
+                const month = row.querySelector(".early-month").value;
+                const amount = row.querySelector(".early-amount").value;
+                return { month, amount };
+            }).filter((item) => item.month && item.amount);
+        }
+
+        function syncEarlyPaymentsInput() {
+            document.getElementById("earlyPaymentsInput").value = JSON.stringify(parseEarlyPayments());
+        }
+
+        function createEarlyRow(month = "", amount = "") {
+            const row = document.createElement("div");
+            row.className = "early-row";
+            row.innerHTML = `
+                <input class="early-month" type="number" min="1" step="1" placeholder="Месяц" value="${month}">
+                <input class="early-amount" type="text" inputmode="decimal" data-format="thousands" placeholder="Сумма" value="${amount}">
+                <button type="button" class="remove-row-btn">Удалить</button>
+            `;
+            row.querySelectorAll('input[data-format="thousands"]').forEach((input) => {
+                input.value = formatThousands(input.value);
+                input.addEventListener("input", () => {
+                    input.value = formatThousands(input.value);
+                    syncEarlyPaymentsInput();
+                });
+            });
+            row.querySelectorAll("input").forEach((input) => input.addEventListener("input", syncEarlyPaymentsInput));
+            row.querySelector(".remove-row-btn").addEventListener("click", () => {
+                row.remove();
+                syncEarlyPaymentsInput();
+            });
+            return row;
+        }
+
+        const earlyRowsContainer = document.getElementById("earlyPaymentsRows");
+        const earlyRaw = document.getElementById("earlyPaymentsInput").value || "[]";
+        try {
+            const parsed = JSON.parse(earlyRaw);
+            parsed.forEach((item) => earlyRowsContainer.appendChild(createEarlyRow(item.month, item.amount)));
+        } catch (_) {
+            // ignore malformed user payload
+        }
+        document.getElementById("addEarlyPaymentBtn").addEventListener("click", () => {
+            earlyRowsContainer.appendChild(createEarlyRow());
+        });
+        syncEarlyPaymentsInput();
+
+        const modeInput = document.getElementById("modeInput");
+        const rateField = document.getElementById("rateField");
+        const rateInput = document.getElementById("rate");
+        const mortgageBtn = document.getElementById("mortgageModeBtn");
+        const installmentBtn = document.getElementById("installmentModeBtn");
+
+        function applyMode() {
+            const isInstallment = modeInput.value === "installment";
+            rateField.style.display = isInstallment ? "none" : "block";
+            rateInput.required = !isInstallment;
+            if (isInstallment) {
+                rateInput.value = "0";
+            }
+            mortgageBtn.classList.toggle("active", !isInstallment);
+            installmentBtn.classList.toggle("active", isInstallment);
+        }
+
+        mortgageBtn.addEventListener("click", () => {
+            modeInput.value = "mortgage";
+            applyMode();
+        });
+        installmentBtn.addEventListener("click", () => {
+            modeInput.value = "installment";
+            applyMode();
+        });
+        applyMode();
+
+        document.getElementById("calcForm").addEventListener("submit", syncEarlyPaymentsInput);
+
         const schedule = {{ result.schedule|tojson if result else "[]" }};
         const canvas = document.getElementById("balanceChart");
         if (canvas && schedule.length > 1) {
-            const ctx = canvas.getContext("2d");
-            const width = canvas.width = canvas.clientWidth * window.devicePixelRatio;
-            const height = canvas.height = 220 * window.devicePixelRatio;
-            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-
-            const points = schedule.map((row, index) => ({
-                x: (index / (schedule.length - 1)) * (canvas.clientWidth - 40) + 20,
-                y: 20 + ((row.balance / schedule[0].balance) * 160),
-            }));
-
-            ctx.clearRect(0, 0, canvas.clientWidth, 220);
-            ctx.strokeStyle = "rgba(134, 225, 255, 0.9)";
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            points.forEach((point, idx) => {
-                const y = 200 - point.y;
-                if (idx === 0) {
-                    ctx.moveTo(point.x, y);
-                } else {
-                    ctx.lineTo(point.x, y);
+            new Chart(canvas.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: schedule.map((r) => r.month),
+                    datasets: [
+                        {
+                            label: "Остаток долга",
+                            data: schedule.map((r) => r.balance),
+                            borderColor: "#111827",
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: {
+                        mode: "index",
+                        intersect: false
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => ` ${ctx.parsed.y.toLocaleString("ru-RU")} ₽`
+                            }
+                        },
+                        legend: {
+                            display: true
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: "Месяц" } },
+                        y: { title: { display: true, text: "Остаток, ₽" } }
+                    }
                 }
             });
-            ctx.stroke();
         }
     </script>
 </body>
