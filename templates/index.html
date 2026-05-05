@@ -21,15 +21,27 @@
             <p class="subtitle">Рассчитайте сумму переплаты по кредиту</p>
 
             <form method="post" class="calc-form">
-                <label for="principal">Сумма кредита (₽)</label>
+                <label for="property_price">Стоимость недвижимости (₽)</label>
                 <input
-                    id="principal"
-                    name="principal"
+                    id="property_price"
+                    name="property_price"
                     type="text"
                     inputmode="decimal"
                     data-format="thousands"
-                    placeholder="Например: 3500000"
-                    value="{{ form_data.principal }}"
+                    placeholder="Например: 9 500 000"
+                    value="{{ form_data.property_price }}"
+                    required
+                />
+
+                <label for="down_payment">Первоначальный взнос (₽)</label>
+                <input
+                    id="down_payment"
+                    name="down_payment"
+                    type="text"
+                    inputmode="decimal"
+                    data-format="thousands"
+                    placeholder="Например: 2 000 000"
+                    value="{{ form_data.down_payment }}"
                     required
                 />
 
@@ -67,7 +79,9 @@
             {% if result %}
                 <div class="result success">
                     <h2>Результат</h2>
-                    <p>Сумма кредита: <strong>{{ "{:,.2f}".format(result.principal).replace(",", " ") }} ₽</strong></p>
+                    <p>Стоимость недвижимости: <strong>{{ "{:,.2f}".format(result.property_price).replace(",", " ") }} ₽</strong></p>
+                    <p>Первоначальный взнос: <strong>{{ "{:,.2f}".format(result.down_payment).replace(",", " ") }} ₽ ({{ result.down_payment_percent }}%)</strong></p>
+                    <p>Итоговая сумма кредита: <strong>{{ "{:,.2f}".format(result.loan_amount).replace(",", " ") }} ₽</strong></p>
                     <p>Итоговая сумма выплат: <strong>{{ "{:,.2f}".format(result.total_payment).replace(",", " ") }} ₽</strong></p>
                     <p>Срок: <strong>{{ result.years }} лет</strong></p>
                     <p>Ставка: <strong>{{ result.rate }}%</strong></p>
@@ -76,6 +90,39 @@
                     </p>
                     <p>Ежемесячный платеж: <strong>{{ "{:,.2f}".format(result.monthly_payment).replace(",", " ") }} ₽</strong></p>
                     <p>Рекомендуемый ежемесячный доход: <strong>{{ "{:,.2f}".format(result.required_income).replace(",", " ") }} ₽</strong></p>
+                </div>
+
+                <div class="result success">
+                    <h2>Визуализация остатка долга</h2>
+                    <canvas id="balanceChart" height="220"></canvas>
+                </div>
+
+                <div class="result success">
+                    <h2>Подробный график платежей</h2>
+                    <div class="table-wrap">
+                        <table class="schedule-table">
+                            <thead>
+                                <tr>
+                                    <th>Месяц</th>
+                                    <th>Платеж</th>
+                                    <th>Проценты</th>
+                                    <th>Тело кредита</th>
+                                    <th>Остаток долга</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in result.schedule %}
+                                    <tr>
+                                        <td>{{ row.month }}</td>
+                                        <td>{{ "{:,.2f}".format(row.payment).replace(",", " ") }} ₽</td>
+                                        <td>{{ "{:,.2f}".format(row.interest).replace(",", " ") }} ₽</td>
+                                        <td>{{ "{:,.2f}".format(row.principal).replace(",", " ") }} ₽</td>
+                                        <td>{{ "{:,.2f}".format(row.balance).replace(",", " ") }} ₽</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             {% endif %}
         </section>
@@ -100,6 +147,34 @@
                 }
             });
         });
+
+        const schedule = {{ result.schedule|tojson if result else "[]" }};
+        const canvas = document.getElementById("balanceChart");
+        if (canvas && schedule.length > 1) {
+            const ctx = canvas.getContext("2d");
+            const width = canvas.width = canvas.clientWidth * window.devicePixelRatio;
+            const height = canvas.height = 220 * window.devicePixelRatio;
+            ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+            const points = schedule.map((row, index) => ({
+                x: (index / (schedule.length - 1)) * (canvas.clientWidth - 40) + 20,
+                y: 20 + ((row.balance / schedule[0].balance) * 160),
+            }));
+
+            ctx.clearRect(0, 0, canvas.clientWidth, 220);
+            ctx.strokeStyle = "rgba(134, 225, 255, 0.9)";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            points.forEach((point, idx) => {
+                const y = 200 - point.y;
+                if (idx === 0) {
+                    ctx.moveTo(point.x, y);
+                } else {
+                    ctx.lineTo(point.x, y);
+                }
+            });
+            ctx.stroke();
+        }
     </script>
 </body>
 </html>
